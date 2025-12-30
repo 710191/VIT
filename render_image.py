@@ -5,7 +5,7 @@ def render_image_from_patches(
     image_size,         # (H, W) 原始影像大小
     batch_idx=0,
     scale=2,            # 放大倍率
-    patch_size = 32     # ViT patch 大小 = 32
+    patch_size = 64     # ViT patch 大小 = 32
 ):
     """
     回傳:
