@@ -22,8 +22,8 @@ def preprocess_images_by_suffix(folder_path, out_folder, patch_size=32, scale=2)
                 min_w = min(min_w, w)
 
     # 調整成 patch_size 的倍數
-    min_h = (min_h // patch_size) * patch_size
-    min_w = (min_w // patch_size) * patch_size
+    min_h = 128
+    min_w = 128
     print(f"統一大小 LR: {min_h}x{min_w}, HR: {min_h*scale}x{min_w*scale}")
 
     # 遍歷資料夾 resize 並存檔
@@ -40,8 +40,8 @@ def preprocess_images_by_suffix(folder_path, out_folder, patch_size=32, scale=2)
 
 
 preprocess_images_by_suffix(
-    folder_path="../dataset/DrealSR",
-    out_folder="../dataset/DrealSR_cut",
+    folder_path="../../dataset/DrealSR_cut",
+    out_folder="../../dataset/DrealSR_cut128",
     patch_size=32,
     scale=2
 )
