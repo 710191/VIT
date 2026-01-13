@@ -18,5 +18,5 @@ class MLP(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
         x = F.relu(self.fc3(x))
-        out = self.fc_out(x)
+        out = F.relu(self.fc_out(x))
         return out

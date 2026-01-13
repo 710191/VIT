@@ -7,7 +7,7 @@ from render_image import render_image_from_patches  # 你的重建函數
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 image_dir = "../../dataset/DrealSR_cut64"
-image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 4)]
+image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
 recon_dir = "./output/test_fft_recon"
 os.makedirs(recon_dir, exist_ok=True)

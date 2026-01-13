@@ -1,65 +1,74 @@
 import torch
+"""
+fft: input: 0 ~ 255 tensor
+
+render: input: down
+        output: 0 ~ 1 [3, H, W]tensor
+"""
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
 
 def render_image_from_patches(
-    patch_outputs,      # [batch, patch_num, 3, n, 4]
+    alphas,             # [3, v_len, u_len]
+    phis,               # [3, v_len, u_len]
+    v_lists,            # [3, v_len]
+    u_lists,            # [3, u_len]
     image_size,         # (H, W) 原始影像大小
     batch_idx=0,
     scale=2,            # 放大倍率
-    patch_size = 64     # ViT patch 大小 = 32
+    patch_size = 64     # ViT patch 大小 = 64
 ):
     """
     回傳:
-        image: [H*scale, W*scale, 3]
+        recon_patch: [H*scale, W*scale, 3] tensor on device
     """
-    device = patch_outputs.device
     H, W = image_size
     Hs, Ws = H * scale, W * scale
 
     # --------------------------------
-    # 1. 建立 pixel 座標 (放大後)
+    # 3. 取出該 patch 的參數
     # --------------------------------
+
+    # 空間座標
     y, x = torch.meshgrid(
-        torch.arange(Hs, device=device),
-        torch.arange(Ws, device=device),
-        indexing="ij"
+        torch.arange(patch_size*scale, device=device, dtype=torch.float32),
+        torch.arange(patch_size*scale, device=device, dtype=torch.float32),
+        indexing='ij'
     )
 
     # 對應回原圖座標（連續座標）
-    x = x.float() / scale
-    y = y.float() / scale
+    x = x / scale
+    y = y / scale
 
-    # --------------------------------
-    # 2. 計算 ViT patch index
-    # --------------------------------
-    patch_cols = W // patch_size
-    patch_rows = H // patch_size
+    H, W, C = patch_size*scale, patch_size*scale, 3
+    channels = []
 
-    patch_row = torch.clamp((y // patch_size).long(), max=patch_rows - 1)
-    patch_col = torch.clamp((x // patch_size).long(), max=patch_cols - 1)
+    # 空間座標
+    for c in range(3):
+        alpha  = alphas[c].to(device)      # [v_len, u_len]
+        phi    = phis[c].to(device)        # [v_len, u_len]
+        v_list = v_lists[c].to(device)     # [v_len]
+        u_list = u_lists[c].to(device)     # [u_len]
 
-    patch_idx = patch_row * patch_cols + patch_col   # [Hs, Ws]
+        recon_channel = torch.zeros((Hs, Ws), dtype=torch.float32, device=device)
 
-    # --------------------------------
-    # 3. 取出該 patch 的參數
-    # --------------------------------
-    # [Hs, Ws, 3, n, 4]
-    params = patch_outputs[batch_idx][patch_idx]
+        # ✅ DC component
+        recon_channel += alpha[0, 0]
 
-    alpha   = params[..., 0]   # [Hs, Ws, 3, n]
-    phi     = params[..., 1]
-    omega_x = params[..., 2]
-    omega_y = params[..., 3]
+        # ✅ 只跑「一半頻譜」+ ×2
+        for u in u_list:
+            for v in v_list:
+                recon_channel += 2 * alpha[u, v] * torch.cos(
+                    2 * torch.pi * (u * y / Hs + v * x / Ws) + phi[u, v]
+                )
 
-    # --------------------------------
-    # 4. 計算 V(x, y)
-    # --------------------------------
-    x = x.view(Hs, Ws, 1, 1)
-    y = y.view(Hs, Ws, 1, 1)
+        # ✅ normalization
+        recon_channel /= (len(u_list) * len(v_list) * 2)
 
-    value = alpha * torch.sin(
-        omega_x * x + omega_y * y + phi
-    )
+        # clip
+        recon_channel = torch.clamp(recon_channel, 0, 255) / 255.0
 
-    image = value.sum(dim=-1)   # sum over n → [Hs, Ws, 3]
+        channels.append(recon_channel)
 
-    return image
+    img = torch.stack(channels, dim=2).permute(2, 0, 1)  # [3, H*scale, W*scale]
+    return img  # tensor, 已經在 device 上

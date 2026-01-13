@@ -118,6 +118,9 @@ for epoch in range(num_epochs):
             top = torch.randint(0, lr_H - crop_size + 1, (1,)).item()
             left = torch.randint(0, lr_W - crop_size + 1, (1,)).item()
 
+            top = top - top % crop_size
+            left = left - left % crop_size
+
             # LR, HR crop 有對應位置
             lr_tensor = lr_tensor_full[ :, top : top+crop_size, left : left+crop_size]
             hr_tensor = hr_tensor_full[ :, top * scale:(top + crop_size) * scale, left * scale:(left + crop_size) * scale]
