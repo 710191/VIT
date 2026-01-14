@@ -17,7 +17,7 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
-n = 30 
+n = 100 
 fft_parameters = 4 
 num_epochs = 100
 num_iters = 10
@@ -93,7 +93,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut128"
+image_dir = "../../dataset/DrealSR_cut64"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
 for epoch in range(num_epochs):
@@ -152,9 +152,9 @@ for epoch in range(num_epochs):
                 rendered_image_tensor = rendered_image.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
 
                 # 計算 loss
+                optimizer.zero_grad()
                 loss = loss_fn(rendered_image_tensor, lr_tensor)
 
-                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
     
@@ -222,10 +222,7 @@ for epoch in range(num_epochs):
             # 存檔查看
             image_np = (rendered_image.detach().cpu().numpy() * 255).astype('uint8')
             img = Image.fromarray(image_np)
-            img.save(f"./output/rendered_epoch{epoch+1}_01.png")
+            img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
 
-            if(epoch == 0):
-                save_hwc3_tensor_to_csv(lr_tensor_full.permute(1, 2, 0), f"./output/csv/lr_tensor.csv")
-            save_hwc3_tensor_to_csv(rendered_image, f"./output/csv/rendered_epoch{epoch+1}.csv")
     print("epoch", epoch + 1, "finished.")
         
