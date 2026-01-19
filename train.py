@@ -41,6 +41,21 @@ cnn = PatchEncoderCNN(in_channels=180).cuda()
 optimizer = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
 loss_fn = nn.MSELoss()
 
+# get start epoch if checkpoint exists
+start_epoch = 50  
+checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}.pth'
+if os.path.exists(checkpoint_path):
+    print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    mlp.load_state_dict(checkpoint['mlp_state_dict'])
+    cnn.load_state_dict(checkpoint['cnn_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    start_epoch = checkpoint['epoch'] + 1
+    print(f"[Info] Resuming from epoch {start_epoch}")
+else:
+    print("[Info] No checkpoint found, starting from scratch")
+    start_epoch = 0
+
 # test
 def save_latent_cnn_n_by_param(latent_cnn, n, fft_parameters, filename='latent_cnn.csv', folder='csv_output'):
     """
@@ -84,6 +99,16 @@ def save_hwc3_tensor_to_csv(tensor, path):
                 row.append(f"{r} {g} {b}")
             writer.writerow(row)
 
+# save checkpoint
+def save_checkpoint(epoch, mlp, cnn, optimizer, path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    torch.save({
+        'epoch': epoch,
+        'mlp_state_dict': mlp.state_dict(),
+        'cnn_state_dict': cnn.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, path)
+
 
 # PSNR 計算函數
 def psnr(pred, target):
@@ -96,7 +121,7 @@ def psnr(pred, target):
 image_dir = "../../dataset/DrealSR_cut64"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
-for epoch in range(num_epochs):
+for epoch in range(start_epoch, num_epochs):
     for img_name in image_list:
         for iter in range(num_iters):  # 每個epoch每張圖crop幾次
 
@@ -223,6 +248,15 @@ for epoch in range(num_epochs):
             image_np = (rendered_image.detach().cpu().numpy() * 255).astype('uint8')
             img = Image.fromarray(image_np)
             img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
+
+    if (epoch + 1) % 5 == 0:
+        save_checkpoint(
+            epoch=epoch + 1,
+            mlp=mlp,
+            cnn=cnn,
+            optimizer=optimizer,
+            path=f'./checkpoints/ver3_epoch_{epoch+1}.pth'
+        )
 
     print("epoch", epoch + 1, "finished.")
         
