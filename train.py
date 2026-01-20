@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from encoder import Encoder
-from render_image import render_image_from_patches
+from render_image import render_image
 from PCA import PCA
 from CNN import PatchEncoderCNN
 from MLP import MLP
@@ -12,6 +12,7 @@ import numpy as np
 import os
 from torchvision import transforms
 import csv
+import time
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
@@ -20,15 +21,16 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
-n = 100 
+n = 1000 
 fft_parameters = 4 
 num_epochs = 100
 num_iters = 10
 num_same_crop = 20
-learning_rate = 1e-4 * 8
+learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
+batch_size = 8  # 一次 GPU 處理 8 個 crop
 
 # save render
 save = True
@@ -89,7 +91,7 @@ image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
 
 for epoch in range(start_epoch, num_epochs):
-
+    start_time = time.time()
     # dataset
     dataset = LRPatchDataset(image_dir=image_dir,
                             image_list=image_list,
@@ -98,8 +100,7 @@ for epoch in range(start_epoch, num_epochs):
                             num_iters=num_iters,
                             num_same_crop=num_same_crop)
 
-    batch_size = 8  # 一次 GPU 處理 8 個 crop
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
     for lr_batch, hr_batch in dataloader:
         lr_batch = lr_batch.to(device)
@@ -119,18 +120,13 @@ for epoch in range(start_epoch, num_epochs):
         outputs = mlp(latent_cnn)
         outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
 
-        # render batch (仍可逐個 crop render)
-        rendered_batch = []
-        for b in range(outputs.shape[0]):
-            rendered_image = render_image_from_patches(
-                patch_outputs=outputs[b:b+1],
-                image_size=(crop_size, crop_size),
-                batch_idx=0,
-                scale=scale,
-                patch_size=patch_size
-            ).to(device)
-            rendered_batch.append(rendered_image.permute(2,0,1))
-        rendered_batch = torch.stack(rendered_batch)
+        # render batch 
+        rendered_batch = render_image(
+            patch_outputs=outputs,
+            image_size=(crop_size, crop_size),
+            scale=scale,
+            patch_size=patch_size
+        ).to(device)
 
         # loss + backward
         optimizer.zero_grad()
@@ -183,23 +179,19 @@ for epoch in range(start_epoch, num_epochs):
             outputs_full_image = torch.cat(outputs_list, dim=1)
             
             # render reconstructed image
-            image_size = (lr_H, lr_W)
-            rendered_image = render_image_from_patches(
+            rendered_image = render_image(
                 patch_outputs=outputs_full_image,
-                image_size=image_size,
-                batch_idx=0,
+                image_size=(lr_H, lr_W),
                 scale=scale,
                 patch_size=patch_size
             ).to(device)
             rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
-            rendered_image_tensor = rendered_image.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
             
             # PSNR
-            epoch_psnr = psnr(rendered_image.permute(2, 0, 1), lr_tensor_full)
-            print(f"Epoch {epoch+1} PSNR on DrealSR01: {epoch_psnr:.2f}")
+            epoch_psnr = psnr(rendered_image, lr_tensor_full)
             
             # 存檔查看
-            image_np = (rendered_image.detach().cpu().numpy() * 255).astype('uint8')
+            image_np = (rendered_image[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
             img = Image.fromarray(image_np)
             img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
 
@@ -212,5 +204,11 @@ for epoch in range(start_epoch, num_epochs):
             path=f'./checkpoints/ver3_epoch_{epoch+1}.pth'
         )
 
-    print("epoch", epoch + 1, "finished.")
+    elapsed = time.time() - start_time
+    h = int(elapsed // 3600)
+    m = int((elapsed % 3600) // 60)
+    s = int(elapsed % 60)
+    print(f"Epoch {epoch+1} PSNR on DrealSR01: {epoch_psnr:.2f} | elapsed time: {h:02d}:{m:02d}:{s:02d}")
+
+
         
