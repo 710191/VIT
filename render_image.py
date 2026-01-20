@@ -50,23 +50,6 @@ def render_image_from_patches(
     omega_x = params[..., 2]
     omega_y = params[..., 3]
 
-    """
-    print("alpha - mean: {:.4f}, min: {:.4f}, max: {:.4f}".format(
-        alpha.mean().item(), alpha.min().item(), alpha.max().item()
-    ))
-
-    print("phi - mean: {:.4f}, min: {:.4f}, max: {:.4f}".format(
-        phi.mean().item(), phi.min().item(), phi.max().item()
-    ))
-
-    print("omega_x - mean: {:.4f}, min: {:.4f}, max: {:.4f}".format(
-        omega_x.mean().item(), omega_x.min().item(), omega_x.max().item()
-    ))
-
-    print("omega_y - mean: {:.4f}, min: {:.4f}, max: {:.4f}".format(
-        omega_y.mean().item(), omega_y.min().item(), omega_y.max().item()
-    ))
-    """
 
     # --------------------------------
     # 4. 計算 V(x, y)

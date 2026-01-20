@@ -2,9 +2,12 @@ import torch
 import torch.nn as nn
 from encoder import Encoder
 from render_image import render_image_from_patches
-from MLP import MLP
+from PCA import PCA
 from CNN import PatchEncoderCNN
+from MLP import MLP
 from PIL import Image
+from torch.utils.data import DataLoader
+from lr_patch_dataset import LRPatchDataset
 import numpy as np
 import os
 from torchvision import transforms
@@ -22,7 +25,7 @@ fft_parameters = 4
 num_epochs = 100
 num_iters = 10
 num_same_crop = 20
-learning_rate = 1e-4
+learning_rate = 1e-4 * 8
 crop_size = 64
 patch_size = 64
 scale = 1
@@ -30,19 +33,25 @@ scale = 1
 # save render
 save = True
 
-# MLP list
-input_dim = 2880
-mlp = MLP(input_dim, colors * n * fft_parameters).to(device)
+# PCA
+in_channels = 180
+out_channels = 50
+pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
-cnn = PatchEncoderCNN(in_channels=180).cuda()
+num_downsample = 2
+cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
+
+# MLP list
+input_dim =  out_channels * ((patch_size // (2 ** num_downsample)) ** 2)
+mlp = MLP(input_dim, colors * n * fft_parameters).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 50  
+start_epoch = 0  
 checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
@@ -55,49 +64,6 @@ if os.path.exists(checkpoint_path):
 else:
     print("[Info] No checkpoint found, starting from scratch")
     start_epoch = 0
-
-# test
-def save_latent_cnn_n_by_param(latent_cnn, n, fft_parameters, filename='latent_cnn.csv', folder='csv_output'):
-    """
-    latent_cnn: [1, 1, n*fft_parameters] tensor
-    reshape 成 [n, fft_parameters] 並存 CSV
-    """
-    os.makedirs(folder, exist_ok=True)
-
-    # 去掉 batch/channel 維度
-    latent_np = latent_cnn.squeeze().cpu().numpy()  # shape [n*fft_parameters]
-
-    # reshape 成 [n, fft_parameters]
-    latent_np = latent_np.reshape(n, fft_parameters)
-
-    path = os.path.join(folder, filename)
-
-    with open(path, 'w', newline='') as f:
-        writer = csv.writer(f)
-        for row in latent_np:
-            writer.writerow(row)
-
-    print(f"latent_cnn saved to {path} with shape [{n}, {fft_parameters}]")
-
-def save_hwc3_tensor_to_csv(tensor, path):
-    """
-    tensor: [H, W, 3]
-    CSV: H rows, W cols, each cell = "R G B"
-    """
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-
-    t = tensor.detach().cpu()
-    H, W, C = t.shape
-    assert C == 3
-
-    with open(path, "w", newline="") as f:
-        writer = csv.writer(f)
-        for h in range(H):
-            row = []
-            for w in range(W):
-                r, g, b = t[h, w].tolist()
-                row.append(f"{r} {g} {b}")
-            writer.writerow(row)
 
 # save checkpoint
 def save_checkpoint(epoch, mlp, cnn, optimizer, path):
@@ -121,78 +87,63 @@ def psnr(pred, target):
 image_dir = "../../dataset/DrealSR_cut64"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
+
 for epoch in range(start_epoch, num_epochs):
-    for img_name in image_list:
-        for iter in range(num_iters):  # 每個epoch每張圖crop幾次
 
-            # LR, HR path
-            lr_path = os.path.join(image_dir, img_name)
-            hr_name = img_name.replace("_LR", "_HR")
-            hr_path = os.path.join(image_dir, hr_name)
-            
-            # LR, HR tensor
-            lr_image = Image.open(lr_path).convert("RGB")
-            hr_image = Image.open(hr_path).convert("RGB")
-            to_tensor = transforms.ToTensor()
-            lr_tensor_full = to_tensor(lr_image)
-            hr_tensor_full = to_tensor(hr_image)
+    # dataset
+    dataset = LRPatchDataset(image_dir=image_dir,
+                            image_list=image_list,
+                            crop_size=crop_size,
+                            scale=scale,
+                            num_iters=num_iters,
+                            num_same_crop=num_same_crop)
 
-            # random top, left for cropping 64 * 64
-            _, lr_H, lr_W = lr_tensor_full.shape
-            assert lr_H >= crop_size and lr_W >= crop_size
-            top = torch.randint(0, lr_H - crop_size + 1, (1,)).item()
-            left = torch.randint(0, lr_W - crop_size + 1, (1,)).item()
+    batch_size = 8  # 一次 GPU 處理 8 個 crop
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
 
-            # LR, HR crop 有對應位置
-            lr_tensor = lr_tensor_full[ :, top : top+crop_size, left : left+crop_size]
-            hr_tensor = hr_tensor_full[ :, top * scale:(top + crop_size) * scale, left * scale:(left + crop_size) * scale]
+    for lr_batch, hr_batch in dataloader:
+        lr_batch = lr_batch.to(device)
+        hr_batch = hr_batch.to(device)
 
-            # 加 batch dimension + device
-            lr_tensor = lr_tensor.unsqueeze(0).to(device)
-            hr_tensor = hr_tensor.unsqueeze(0).to(device)
+        # encoder forward
+        feat = hat.model.conv_first(lr_batch)
+        lr_latents = hat.model.forward_features(feat)
 
-            for same_crop in range(num_same_crop):  # 每個crop跑幾次
-                # encoder forward
-                #print("lr_tensor", lr_tensor.shape)
-                feat = hat.model.conv_first(lr_tensor)
-                lr_crop_latents = hat.model.forward_features(feat)
-                
-                # CNN: [1, 180, crop_size, crop_size] -> [1, 1, n*fft_parameters]
-                latent_cnn = cnn(lr_crop_latents) 
+        # PCA forward
+        latent_pca = pca(lr_latents) 
 
-                # 丟進MLP後 reshape
-                outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
-                outputs = outputs.view(1, 1, colors, n, fft_parameters)  # [batch, patch_num, colors, n, fft_parameters]
+        # CNN forward
+        latent_cnn = cnn(latent_pca) 
 
-                # render reconstructed image
-                image_size = (64, 64)
-                rendered_image = render_image_from_patches(
-                    patch_outputs=outputs,
-                    image_size=image_size,
-                    batch_idx=0,
-                    scale=scale,
-                    patch_size=patch_size
-                ).to(device)
-                rendered_image = torch.clamp(rendered_image, 0.0, 1.0) # [H, W, 3]
-                rendered_image_tensor = rendered_image.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
+        # MLP forward + reshape
+        outputs = mlp(latent_cnn)
+        outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
 
-                # 計算 loss
-                optimizer.zero_grad()
-                loss = loss_fn(rendered_image_tensor, lr_tensor)
+        # render batch (仍可逐個 crop render)
+        rendered_batch = []
+        for b in range(outputs.shape[0]):
+            rendered_image = render_image_from_patches(
+                patch_outputs=outputs[b:b+1],
+                image_size=(crop_size, crop_size),
+                batch_idx=0,
+                scale=scale,
+                patch_size=patch_size
+            ).to(device)
+            rendered_batch.append(rendered_image.permute(2,0,1))
+        rendered_batch = torch.stack(rendered_batch)
 
-                loss.backward()
-                optimizer.step()
+        # loss + backward
+        optimizer.zero_grad()
+        loss = loss_fn(rendered_batch, hr_batch)
+        loss.backward()
+        optimizer.step()
     
     # inference on DrealSR01 every 5 epochs
     if (epoch + 1) % 1 == 0:
         with torch.no_grad():
-            lr01_path = os.path.join(image_dir, "DrealSR02_LR.png")
-            hr01_path = os.path.join(image_dir, "DrealSR02_HR.png")
+            lr_path = os.path.join(image_dir, "DrealSR02_LR.png")
+            hr_path = os.path.join(image_dir, "DrealSR02_HR.png")
             
-            # open image
-            lr_image = Image.open(lr01_path).convert("RGB")
-            hr_image = Image.open(hr01_path).convert("RGB")
-
             # LR, HR tensor
             lr_image = Image.open(lr_path).convert("RGB")
             hr_image = Image.open(hr_path).convert("RGB")
@@ -217,8 +168,11 @@ for epoch in range(start_epoch, num_epochs):
                     feat = hat.model.conv_first(lr_tensor)
                     lr_crop_latents = hat.model.forward_features(feat)
 
-                    # CNN: [1, 180, crop_size, crop_size] -> [1, 1, n*fft_parameters]
-                    latent_cnn = cnn(lr_crop_latents) 
+                    # PCA
+                    latent_pca = pca(lr_crop_latents) 
+
+                    # CNN
+                    latent_cnn = cnn(latent_pca) 
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
