@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from encoder import Encoder
-from render_image import render_image_from_patches
+from render_image import render_image
 from MLP import MLP
 from CNN import PatchEncoderCNN
 from PIL import Image
@@ -9,6 +9,7 @@ import numpy as np
 import os
 from torchvision import transforms
 import csv
+import time
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
@@ -42,7 +43,7 @@ optimizer = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 50  
+start_epoch = 0  
 checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
@@ -122,6 +123,7 @@ image_dir = "../../dataset/DrealSR_cut64"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
 for epoch in range(start_epoch, num_epochs):
+    start_time = time.time()
     for img_name in image_list:
         for iter in range(num_iters):  # 每個epoch每張圖crop幾次
 
@@ -166,15 +168,14 @@ for epoch in range(start_epoch, num_epochs):
 
                 # render reconstructed image
                 image_size = (64, 64)
-                rendered_image = render_image_from_patches(
+                rendered_image = render_image(
                     patch_outputs=outputs,
                     image_size=image_size,
-                    batch_idx=0,
                     scale=scale,
                     patch_size=patch_size
                 ).to(device)
                 rendered_image = torch.clamp(rendered_image, 0.0, 1.0) # [H, W, 3]
-                rendered_image_tensor = rendered_image.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
+                rendered_image_tensor = rendered_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
 
                 # 計算 loss
                 optimizer.zero_grad()
@@ -230,22 +231,20 @@ for epoch in range(start_epoch, num_epochs):
             
             # render reconstructed image
             image_size = (lr_H, lr_W)
-            rendered_image = render_image_from_patches(
+            rendered_image = render_image(
                 patch_outputs=outputs_full_image,
                 image_size=image_size,
-                batch_idx=0,
                 scale=scale,
                 patch_size=patch_size
             ).to(device)
             rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
-            rendered_image_tensor = rendered_image.permute(2, 0, 1).unsqueeze(0)  # [1, 3, H, W]
+            rendered_image_tensor = rendered_image.permute(0, 3, 1, 2)  # [1, 3, H, W]
             
             # PSNR
-            epoch_psnr = psnr(rendered_image.permute(2, 0, 1), lr_tensor_full)
-            print(f"Epoch {epoch+1} PSNR on DrealSR01: {epoch_psnr:.2f}")
+            epoch_psnr = psnr(rendered_image.squeeze(0).permute(2, 0, 1), lr_tensor_full)
             
             # 存檔查看
-            image_np = (rendered_image.detach().cpu().numpy() * 255).astype('uint8')
+            image_np = (rendered_image.squeeze(0).detach().cpu().numpy() * 255).astype('uint8')
             img = Image.fromarray(image_np)
             img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
 
@@ -258,5 +257,9 @@ for epoch in range(start_epoch, num_epochs):
             path=f'./checkpoints/ver3_epoch_{epoch+1}.pth'
         )
 
-    print("epoch", epoch + 1, "finished.")
+    elapsed = time.time() - start_time
+    h = int(elapsed // 3600)
+    m = int((elapsed % 3600) // 60)
+    s = int(elapsed % 60)
+    print(f"Epoch {epoch+1} PSNR on DrealSR01: {epoch_psnr:.2f} | elapsed time: {h:02d}:{m:02d}:{s:02d}")
         
