@@ -17,7 +17,7 @@ class LRPatchDataset(Dataset):
         self.all_crops = []
         for img_name in self.image_list:
             lr_path = f"{self.image_dir}/{img_name}"
-            hr_name = img_name.replace("_LR", "_LR")
+            hr_name = img_name.replace("_LR", "_HR")
             hr_path = f"{self.image_dir}/{hr_name}"
 
             lr_image = Image.open(lr_path).convert("RGB")
@@ -40,7 +40,7 @@ class LRPatchDataset(Dataset):
         img_name, _, _ = self.all_crops[crop_idx]
 
         lr_path = f"{self.image_dir}/{img_name}"
-        hr_name = img_name.replace("_LR", "_LR")
+        hr_name = img_name.replace("_LR", "_HR")
         hr_path = f"{self.image_dir}/{hr_name}"
 
         lr_image = Image.open(lr_path).convert("RGB")

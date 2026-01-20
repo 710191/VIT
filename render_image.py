@@ -34,7 +34,7 @@ def render_image(
 
     # flatten patch dimension以方便 gather
     #patch_outputs_flat = patch_outputs.permute(0, 1, 2, 4, 3).reshape(B, patch_num, C*4*n)  # [B, patch_num, C*4*n]
-    patch_outputs_flat = patch_outputs.reshape(B, patch_num, C*4*n)  # [B, patch_num, C*4*n]
+    patch_outputs_flat = patch_outputs.reshape(B, patch_num, C*n*4)  # [B, patch_num, C*n*4]
 
     # gather對應 patch
     gathered = torch.gather(patch_outputs_flat, 1, patch_idx_flat.unsqueeze(-1).expand(-1, -1, C*4*n))  # [B, Hs*Ws, C*4*n]
@@ -50,6 +50,6 @@ def render_image(
 
     # 4. 計算 V(x, y)
     value = alpha * torch.sin(omega_x * x_view + omega_y * y_view + phi)  # [B, Hs, Ws, C, n]
-    images = value.sum(dim=-1).permute(0,3,1,2)  # sum over n -> [B, Hs, Ws, C]
+    images = value.sum(dim=-1).permute(0,3,1,2)  # sum over n -> [B, C, Hs, Ws]
 
     return images

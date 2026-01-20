@@ -30,7 +30,7 @@ learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
-batch_size = 8  # 一次 GPU 處理 8 個 crop
+batch_size = 1  # 一次 GPU 處理 8 個 crop
 
 # save render
 save = True
@@ -130,7 +130,7 @@ for epoch in range(start_epoch, num_epochs):
 
         # loss + backward
         optimizer.zero_grad()
-        loss = loss_fn(rendered_batch, hr_batch)
+        loss = loss_fn(rendered_batch, lr_batch)
         loss.backward()
         optimizer.step()
     
