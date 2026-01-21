@@ -21,7 +21,7 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
-n = 1000 
+n = 100
 fft_parameters = 4 
 num_epochs = 100
 num_iters = 10
@@ -30,18 +30,18 @@ learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
-batch_size = 1  # 一次 GPU 處理 8 個 crop
+batch_size = 8  # 一次 GPU 處理 8 個 crop
 
 # save render
 save = True
 
 # PCA
 in_channels = 180
-out_channels = 50
+out_channels = 180
 pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
-num_downsample = 2
+num_downsample = 4
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
@@ -97,24 +97,54 @@ for epoch in range(start_epoch, num_epochs):
                             image_list=image_list,
                             crop_size=crop_size,
                             scale=scale,
-                            num_iters=num_iters,
-                            num_same_crop=num_same_crop)
+                            num_iters=num_iters)
 
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=12, pin_memory=True)
+
 
     for lr_batch, hr_batch in dataloader:
         lr_batch = lr_batch.to(device)
         hr_batch = hr_batch.to(device)
+        """
+        for img_name in image_list:
+                
+            # LR, HR path
+            lr_path = os.path.join(image_dir, img_name)
+            hr_name = img_name.replace("_LR", "_HR")
+            hr_path = os.path.join(image_dir, hr_name)
+            
+            # LR, HR tensor
+            lr_image = Image.open(lr_path).convert("RGB")
+            hr_image = Image.open(hr_path).convert("RGB")
+            to_tensor = transforms.ToTensor()
+            lr_tensor_full = to_tensor(lr_image)
+            hr_tensor_full = to_tensor(hr_image)
+
+            # random top, left for cropping 64 * 64
+            _, lr_H, lr_W = lr_tensor_full.shape
+            assert lr_H >= crop_size and lr_W >= crop_size
+            top = torch.randint(0, lr_H - crop_size + 1, (1,)).item()
+            left = torch.randint(0, lr_W - crop_size + 1, (1,)).item()
+
+            # LR, HR crop 有對應位置
+            lr_tensor = lr_tensor_full[ :, top : top+crop_size, left : left+crop_size]
+            hr_tensor = hr_tensor_full[ :, top * scale:(top + crop_size) * scale, left * scale:(left + crop_size) * scale]
+
+            # 加 batch dimension + device
+            lr_batch = lr_tensor.unsqueeze(0).to(device)
+            hr_batch = hr_tensor.unsqueeze(0).to(device)
+        """
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # encoder forward
         feat = hat.model.conv_first(lr_batch)
         lr_latents = hat.model.forward_features(feat)
 
         # PCA forward
-        latent_pca = pca(lr_latents) 
+        #latent_pca = pca(lr_latents) 
 
         # CNN forward
-        latent_cnn = cnn(latent_pca) 
+        latent_cnn = cnn(lr_latents) 
 
         # MLP forward + reshape
         outputs = mlp(latent_cnn)
@@ -127,6 +157,7 @@ for epoch in range(start_epoch, num_epochs):
             scale=scale,
             patch_size=patch_size
         ).to(device)
+        #rendered_batch = torch.clamp(rendered_batch, 0.0, 1.0)
 
         # loss + backward
         optimizer.zero_grad()
@@ -165,10 +196,10 @@ for epoch in range(start_epoch, num_epochs):
                     lr_crop_latents = hat.model.forward_features(feat)
 
                     # PCA
-                    latent_pca = pca(lr_crop_latents) 
+                    #latent_pca = pca(lr_crop_latents) 
 
                     # CNN
-                    latent_cnn = cnn(latent_pca) 
+                    latent_cnn = cnn(lr_crop_latents) 
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
