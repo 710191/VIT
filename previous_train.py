@@ -37,11 +37,11 @@ save = True
 
 # PCA
 in_channels = 180
-out_channels = 180
+out_channels = 50
 pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
-num_downsample = 4
+num_downsample = 2
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
@@ -50,19 +50,20 @@ mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(
-    list(mlp.parameters()) + list(cnn.parameters()),
+    list(mlp.parameters()) + list(cnn.parameters()) + list(pca.parameters()),
     lr=learning_rate
 )
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 20  
+start_epoch = 0  
 checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}_batch_8.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
     checkpoint = torch.load(checkpoint_path, map_location=device)
     mlp.load_state_dict(checkpoint['mlp_state_dict'])
     cnn.load_state_dict(checkpoint['cnn_state_dict'])
+    pca.load_state_dict(checkpoint['pca_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     start_epoch = checkpoint['epoch'] + 1
     print(f"[Info] Resuming from epoch {start_epoch}")
@@ -71,12 +72,13 @@ else:
     start_epoch = 0
 
 # save checkpoint
-def save_checkpoint(epoch, mlp, cnn, optimizer, path):
+def save_checkpoint(epoch, mlp, cnn, pca, optimizer, path):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     torch.save({
         'epoch': epoch,
         'mlp_state_dict': mlp.state_dict(),
         'cnn_state_dict': cnn.state_dict(),
+        'pca_state_dict': pca.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
     }, path)
 
@@ -144,10 +146,10 @@ for epoch in range(start_epoch, num_epochs):
         lr_latents = hat.model.forward_features(feat)
 
         # PCA forward
-        #latent_pca = pca(lr_latents) 
+        latent_pca = pca(lr_latents) 
 
         # CNN forward
-        latent_cnn = cnn(lr_latents) 
+        latent_cnn = cnn(latent_pca) 
 
         # MLP forward + reshape
         outputs = mlp(latent_cnn)
@@ -199,10 +201,10 @@ for epoch in range(start_epoch, num_epochs):
                     lr_crop_latents = hat.model.forward_features(feat)
 
                     # PCA
-                    #latent_pca = pca(lr_crop_latents) 
+                    latent_pca = pca(lr_crop_latents) 
 
                     # CNN
-                    latent_cnn = cnn(lr_crop_latents) 
+                    latent_cnn = cnn(latent_pca) 
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
@@ -234,6 +236,7 @@ for epoch in range(start_epoch, num_epochs):
             epoch=epoch + 1,
             mlp=mlp,
             cnn=cnn,
+            pca=pca,
             optimizer=optimizer,
             path=f'./checkpoints/ver3_epoch_{epoch+1}_batch_8.pth'
         )
