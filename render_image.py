@@ -29,6 +29,9 @@ def render_image(
     patch_col = torch.clamp((x // patch_size).long(), max=patch_cols - 1)
     patch_idx = patch_row * patch_cols + patch_col  # [Hs, Ws]
 
+    x_local = x - patch_col * patch_size
+    y_local = y - patch_row * patch_size
+
     # 3. 擴展 batch
     patch_idx_flat = patch_idx.view(1, -1).expand(B, Hs*Ws)  # [B, Hs*Ws]
 
@@ -45,8 +48,8 @@ def render_image(
     omega_x = gathered[..., 2]
     omega_y = gathered[..., 3]
 
-    x_view = x.view(1, Hs, Ws, 1, 1)  # [1, Hs, Ws, 1, 1]
-    y_view = y.view(1, Hs, Ws, 1, 1)
+    x_view = x_local.view(1, Hs, Ws, 1, 1)  # [1, Hs, Ws, 1, 1]
+    y_view = y_local.view(1, Hs, Ws, 1, 1)
 
     # 4. 計算 V(x, y)
     value = alpha * torch.sin(omega_x * x_view + omega_y * y_view + phi)  # [B, Hs, Ws, C, n]

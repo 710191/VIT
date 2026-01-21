@@ -21,9 +21,9 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
-n = 100
+n = 1000
 fft_parameters = 4 
-num_epochs = 100
+num_epochs = 1000
 num_iters = 10
 num_same_crop = 20
 learning_rate = 1e-4
@@ -54,7 +54,7 @@ loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
 start_epoch = 0  
-checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}.pth'
+checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}_batch_8.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -232,7 +232,7 @@ for epoch in range(start_epoch, num_epochs):
             mlp=mlp,
             cnn=cnn,
             optimizer=optimizer,
-            path=f'./checkpoints/ver3_epoch_{epoch+1}.pth'
+            path=f'./checkpoints/ver3_epoch_{epoch+1}_batch_8.pth'
         )
 
     elapsed = time.time() - start_time
