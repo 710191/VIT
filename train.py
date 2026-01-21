@@ -4,7 +4,7 @@ from encoder import Encoder
 from render_image import render_image
 from PCA import PCA
 from CNN import PatchEncoderCNN
-from MLP import MLP
+from SIREN_MLP import SIREN_MLP
 from PIL import Image
 from torch.utils.data import DataLoader
 from lr_patch_dataset import LRPatchDataset
@@ -46,7 +46,7 @@ cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).t
 
 # MLP list
 input_dim =  out_channels * ((patch_size // (2 ** num_downsample)) ** 2)
-mlp = MLP(input_dim, colors * n * fft_parameters).to(device)
+mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
