@@ -20,7 +20,7 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 colors = 3 
 n = 100 
 fft_parameters = 4 
-num_epochs = 100
+num_epochs = 1000
 num_iters = 10
 num_same_crop = 20
 learning_rate = 1e-4
@@ -43,7 +43,7 @@ optimizer = torch.optim.Adam(mlp.parameters(), lr=learning_rate)
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 0  
+start_epoch = 100  
 checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
