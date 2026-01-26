@@ -34,6 +34,6 @@ class PatchEncoderCNN(nn.Module):
         out: [B, 1, out_dim]
         """
         x = self.encoder(x)           # 下採樣 + ReLU
-        x = x.view(x.size(0), 1, -1)
+        # x = x.view(x.size(0), 1, -1)
         #print("x.shape", x.shape)
         return x

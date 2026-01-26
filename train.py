@@ -7,46 +7,55 @@ from CNN import PatchEncoderCNN
 from SIREN_MLP import SIREN_MLP
 from PIL import Image
 from torch.utils.data import DataLoader
-from lr_patch_dataset import LRPatchDataset
+from lr_patch_dataset import LRPatchDataset, LRPatchDatasetPreloaded
 import numpy as np
 import os
 from torchvision import transforms
 import csv
 import time
 
+from tqdm import tqdm
+
+from torchvision.utils import save_image
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
+hat = Encoder('HAT', '/work/u8351896/checkpoints/HAT/HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
 n = 1000
 fft_parameters = 4 
 num_epochs = 1000
-num_iters = 10
-num_same_crop = 20
+num_iters = 1000
 learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
-batch_size = 8  # 一次 GPU 處理 8 個 crop
+batch_size = 16  # 一次 GPU 處理 16 個 crop
 
 # save render
 save = True
 
 # PCA
-in_channels = 180
-out_channels = 180
+in_channels = 64
+out_channels = 64
 pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
-num_downsample = 4
+num_downsample = 1
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
-input_dim =  out_channels * ((patch_size // (2 ** num_downsample)) ** 2)
-mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
+input_dim = out_channels
+# mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
+mlp = nn.Sequential(
+    nn.Linear(out_channels, 16),
+    nn.ReLU(),
+    nn.Linear(16, 3),
+    nn.Sigmoid(),
+).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(
@@ -89,23 +98,24 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut64"
-image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
+image_dir = "/work/u8351896/datasets/super_resolution/DF2K/DF2K_train_HR_subset"
+image_list = [f"0001.png"]
 
 
-for epoch in range(start_epoch, num_epochs):
+# Create dataset and dataloader ONCE before training loop
+dataset = LRPatchDatasetPreloaded(image_dir=image_dir,
+                        image_list=image_list,
+                        crop_size=crop_size,
+                        scale=scale,
+                        num_iters=num_iters)
+
+dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
+
+for epoch in tqdm(range(start_epoch, num_epochs)):
     start_time = time.time()
-    # dataset
-    dataset = LRPatchDataset(image_dir=image_dir,
-                            image_list=image_list,
-                            crop_size=crop_size,
-                            scale=scale,
-                            num_iters=num_iters)
 
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=12, pin_memory=True)
-
-
-    for lr_batch, hr_batch in dataloader:
+    iteration = 0
+    for lr_batch, hr_batch in tqdm(dataloader):
         lr_batch = lr_batch.to(device)
         hr_batch = hr_batch.to(device)
         """
@@ -140,43 +150,58 @@ for epoch in range(start_epoch, num_epochs):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # encoder forward
-        feat = hat.model.conv_first(lr_batch)
-        lr_latents = hat.model.forward_features(feat)
-
-        # PCA forward
-        #latent_pca = pca(lr_latents) 
-
+        lr_latents = hat(lr_batch)  # [batch, patch_num, in_channels]
         # CNN forward
         latent_cnn = cnn(lr_latents) 
-
-        # MLP forward + reshape
+        latent_cnn = latent_cnn.permute(0, 2, 3, 1).contiguous()  # [B, H, W, C]
+        # MLP forward
         outputs = mlp(latent_cnn)
-        outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
+        outputs = outputs.permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
+        # outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
+
+        if iteration == 0:
+            save_image(
+                lr_batch,
+                f"./output/ver3/lr_epoch{epoch+1}.png"
+            )
+            save_image(
+                outputs,
+                f"./output/ver3/output_epoch{epoch+1}.png"
+            )
+        iteration += 1
 
         # render batch 
-        rendered_batch = render_image(
-            patch_outputs=outputs,
-            image_size=(crop_size, crop_size),
-            scale=scale,
-            patch_size=patch_size
-        ).to(device)
+        # rendered_batch = render_image(
+        #     patch_outputs=outputs,
+        #     image_size=(crop_size, crop_size),
+        #     scale=scale,
+        #     patch_size=patch_size
+        # ).to(device)
         #rendered_batch = torch.clamp(rendered_batch, 0.0, 1.0)
 
         # loss + backward
         optimizer.zero_grad()
-        loss = loss_fn(rendered_batch, lr_batch)
+        loss = loss_fn(outputs, lr_batch)
         loss.backward()
         optimizer.step()
     
-    # inference on DrealSR01 every 5 epochs
+    # inference on DrealSR01 every 10 epochs (changed from every epoch to reduce overhead)
     if (epoch + 1) % 1 == 0:
         with torch.no_grad():
-            lr_path = os.path.join(image_dir, "DrealSR02_LR.png")
-            hr_path = os.path.join(image_dir, "DrealSR02_HR.png")
+            lr_path = os.path.join(image_dir, "0001.png")
+            hr_path = os.path.join(image_dir, "0001.png")
             
             # LR, HR tensor
             lr_image = Image.open(lr_path).convert("RGB")
             hr_image = Image.open(hr_path).convert("RGB")
+
+            # Resize LR Image to be a multiple of crop_size
+            lr_width, lr_height = lr_image.size
+            new_lr_width = (lr_width // crop_size) * crop_size
+            new_lr_height = (lr_height // crop_size) * crop_size
+            lr_image = lr_image.resize((new_lr_width, new_lr_height), Image.BICUBIC)
+            hr_image = hr_image.resize((new_lr_width * scale, new_lr_height * scale), Image.BICUBIC)
+
             to_tensor = transforms.ToTensor()
             lr_tensor_full = to_tensor(lr_image).to(device)
             hr_tensor_full = to_tensor(hr_image).to(device)
@@ -184,7 +209,7 @@ for epoch in range(start_epoch, num_epochs):
             # for top, left for cropping 64 * 64
             _, lr_H, lr_W = lr_tensor_full.shape
 
-            outputs_list = []
+            output_full = torch.zeros((1, 3, lr_H, lr_W)).to(device)
             for top in range(0, lr_H, crop_size):
                 for left in range(0, lr_W, crop_size):
                     if top + crop_size > lr_H or left + crop_size > lr_W:
@@ -195,41 +220,41 @@ for epoch in range(start_epoch, num_epochs):
 
                     # encoder forward
                     #print("lr_tensor", lr_tensor.shape)
-                    feat = hat.model.conv_first(lr_tensor)
-                    lr_crop_latents = hat.model.forward_features(feat)
+                    lr_crop_latents = hat(lr_tensor) 
 
                     # PCA
                     #latent_pca = pca(lr_crop_latents) 
 
                     # CNN
                     latent_cnn = cnn(lr_crop_latents) 
+                    latent_cnn = latent_cnn.permute(0, 2, 3, 1).contiguous()  # [B, H, W, C]
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
-                    outputs = outputs.view(1, 1, colors, n, fft_parameters)  # [batch, patch_num, colors, n, fft_parameters]
-                    outputs_list.append(outputs)
-
-            # concat回大圖 根據patch_num去塞
-            outputs_full_image = torch.cat(outputs_list, dim=1)
+                    outputs = outputs.permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
+                    output_full[ :, :, top : top+crop_size, left : left+crop_size] = outputs
             
             # render reconstructed image
-            rendered_image = render_image(
-                patch_outputs=outputs_full_image,
-                image_size=(lr_H, lr_W),
-                scale=scale,
-                patch_size=patch_size
-            ).to(device)
-            rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
+            # rendered_image = render_image(
+            #     patch_outputs=outputs_full_image,
+            #     image_size=(lr_H, lr_W),
+            #     scale=scale,
+            #     patch_size=patch_size
+            # ).to(device)
+            # rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
             
             # PSNR
-            epoch_psnr = psnr(rendered_image, lr_tensor_full)
+            epoch_psnr = psnr(output_full, lr_tensor_full)
             
-            # 存檔查看
-            image_np = (rendered_image[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
-            img = Image.fromarray(image_np)
-            img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
+            # 存檔查看 (only when saving checkpoint)
+            if (epoch + 1) % 1 == 0:
+                image_np = (output_full[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
+                img = Image.fromarray(image_np)
+                img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
+    else:
+        epoch_psnr = 0.0  # Skip PSNR calculation when not validating
 
-    if (epoch + 1) % 5 == 0:
+    if (epoch + 1) % 1 == 0:
         save_checkpoint(
             epoch=epoch + 1,
             mlp=mlp,
@@ -237,12 +262,14 @@ for epoch in range(start_epoch, num_epochs):
             optimizer=optimizer,
             path=f'./checkpoints/ver3_epoch_{epoch+1}_batch_8.pth'
         )
+        print(f"[Checkpoint saved at epoch {epoch+1}]")
 
     elapsed = time.time() - start_time
     h = int(elapsed // 3600)
     m = int((elapsed % 3600) // 60)
     s = int(elapsed % 60)
     print(f"Epoch {epoch+1} PSNR on DrealSR01: {epoch_psnr:.2f} | elapsed time: {h:02d}:{m:02d}:{s:02d}")
+
 
 
         
