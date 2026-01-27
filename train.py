@@ -21,7 +21,7 @@ from torchvision.utils import save_image
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-hat = Encoder('HAT', '/work/u8351896/checkpoints/HAT/HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
+hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
@@ -33,7 +33,7 @@ learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
-batch_size = 16  # 一次 GPU 處理 16 個 crop
+batch_size = 8  # 一次 GPU 處理 16 個 crop
 
 # save render
 save = True
@@ -65,8 +65,8 @@ optimizer = torch.optim.Adam(
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 20  
-checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}_batch_8.pth'
+start_epoch = 18 
+checkpoint_path = f'./checkpoints/kent/epoch_{start_epoch}_batch_8.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -98,8 +98,8 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "/work/u8351896/datasets/super_resolution/DF2K/DF2K_train_HR_subset"
-image_list = [f"0001.png"]
+image_dir = "../../dataset/DrealSR_cut"
+image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 5)]
 
 
 # Create dataset and dataloader ONCE before training loop
@@ -162,11 +162,11 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
         if iteration == 0:
             save_image(
                 lr_batch,
-                f"./output/ver3/lr_epoch{epoch+1}.png"
+                f"./output/kent/lr_epoch{epoch+1}.png"
             )
             save_image(
                 outputs,
-                f"./output/ver3/output_epoch{epoch+1}.png"
+                f"./output/kent/output_epoch{epoch+1}.png"
             )
         iteration += 1
 
@@ -188,8 +188,8 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
     # inference on DrealSR01 every 10 epochs (changed from every epoch to reduce overhead)
     if (epoch + 1) % 1 == 0:
         with torch.no_grad():
-            lr_path = os.path.join(image_dir, "0001.png")
-            hr_path = os.path.join(image_dir, "0001.png")
+            lr_path = os.path.join(image_dir, "DrealSR01_LR.png")
+            hr_path = os.path.join(image_dir, "DrealSR01_HR.png")
             
             # LR, HR tensor
             lr_image = Image.open(lr_path).convert("RGB")
@@ -250,7 +250,7 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
             if (epoch + 1) % 1 == 0:
                 image_np = (output_full[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
                 img = Image.fromarray(image_np)
-                img.save(f"./output/ver3/rendered_epoch{epoch+1}_01.png")
+                img.save(f"./output/kent/rendered_epoch{epoch+1}_01.png")
     else:
         epoch_psnr = 0.0  # Skip PSNR calculation when not validating
 
@@ -260,7 +260,7 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
             mlp=mlp,
             cnn=cnn,
             optimizer=optimizer,
-            path=f'./checkpoints/ver3_epoch_{epoch+1}_batch_8.pth'
+            path=f'./checkpoints/kent/epoch_{epoch+1}_batch_8.pth'
         )
         print(f"[Checkpoint saved at epoch {epoch+1}]")
 
