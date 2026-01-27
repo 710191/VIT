@@ -36,8 +36,8 @@ batch_size = 8  # 一次 GPU 處理 8 個 crop
 save = True
 
 # PCA
-in_channels = 180
-out_channels = 180
+in_channels = 64
+out_channels = 64
 pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
@@ -45,7 +45,7 @@ num_downsample = 4
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
-input_dim =  out_channels * ((patch_size // (2 ** num_downsample)) ** 2)
+input_dim =  out_channels * ((patch_size * 2 // (2 ** num_downsample)) ** 2)
 mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
 
 # optimizer
@@ -56,7 +56,7 @@ optimizer = torch.optim.Adam(
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 20  
+start_epoch = 100  
 checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}_batch_8.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
@@ -89,7 +89,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut64"
+image_dir = "../../dataset/DrealSR_cut128"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 3)]
 
 
@@ -102,7 +102,7 @@ for epoch in range(start_epoch, num_epochs):
                             scale=scale,
                             num_iters=num_iters)
 
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=12, pin_memory=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
 
     for lr_batch, hr_batch in dataloader:
@@ -140,8 +140,10 @@ for epoch in range(start_epoch, num_epochs):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # encoder forward
-        feat = hat.model.conv_first(lr_batch)
-        lr_latents = hat.model.forward_features(feat)
+        #feat = hat.model.conv_first(lr_batch)
+        #lr_latents = hat.model.forward_features(feat) #([8, 180, 64, 64])
+        lr_latents = hat(lr_batch) #([8, 64, 128, 128])
+        #print("lr_latents", lr_latents.shape)
 
         # PCA forward
         #latent_pca = pca(lr_latents) 
@@ -195,8 +197,9 @@ for epoch in range(start_epoch, num_epochs):
 
                     # encoder forward
                     #print("lr_tensor", lr_tensor.shape)
-                    feat = hat.model.conv_first(lr_tensor)
-                    lr_crop_latents = hat.model.forward_features(feat)
+                    #feat = hat.model.conv_first(lr_tensor)
+                    #lr_crop_latents = hat.model.forward_features(feat)
+                    lr_crop_latents = hat(lr_tensor)
 
                     # PCA
                     #latent_pca = pca(lr_crop_latents) 
