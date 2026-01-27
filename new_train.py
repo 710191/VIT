@@ -28,12 +28,12 @@ colors = 3
 n = 1000
 fft_parameters = 4 
 num_epochs = 1000
-num_iters = 200
+num_iters = 1000
 learning_rate = 1e-4
 crop_size = 64
 patch_size = 64
 scale = 1
-batch_size = 8  # 一次 GPU 處理 8 個 crop
+batch_size = 8  # 一次 GPU 處理 16 個 crop
 
 # save render
 save = True
@@ -44,12 +44,18 @@ out_channels = 64
 pca = PCA(in_channels, out_channels).to(device)
 
 # CNN
-num_downsample = 4
+num_downsample = 1
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
-input_dim =  out_channels * ((patch_size * 2 // (2 ** num_downsample)) ** 2)
-mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
+input_dim = out_channels
+# mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
+mlp = nn.Sequential(
+    nn.Linear(out_channels, 16),
+    nn.ReLU(),
+    nn.Linear(16, 3),
+    nn.Sigmoid(),
+).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(
@@ -59,8 +65,8 @@ optimizer = torch.optim.Adam(
 loss_fn = nn.MSELoss()
 
 # get start epoch if checkpoint exists
-start_epoch = 0  
-checkpoint_path = f'./checkpoints/ver3_epoch_{start_epoch}_batch_8.pth'
+start_epoch = 18 
+checkpoint_path = f'./checkpoints/kent/epoch_{start_epoch}_batch_8.pth'
 if os.path.exists(checkpoint_path):
     print(f"[Info] Found checkpoint at {checkpoint_path}, loading...")
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -92,8 +98,8 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut64"
-image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(1, 2)]
+image_dir = "../../dataset/DrealSR_cut"
+image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(2, 5)]
 
 
 # Create dataset and dataloader ONCE before training loop
@@ -144,50 +150,42 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         # encoder forward
-        #feat = hat.model.conv_first(lr_batch)
-        #lr_latents = hat.model.forward_features(feat) #([8, 180, 64, 64])
-        lr_latents = hat(lr_batch) #([8, 64, 128, 128])
-        #print("lr_latents", lr_latents.shape)
-
-        # PCA forward
-        #latent_pca = pca(lr_latents) 
-
+        lr_latents = hat(lr_batch)  # [batch, patch_num, in_channels]
         # CNN forward
         latent_cnn = cnn(lr_latents) 
-
-        # MLP forward + reshape
+        latent_cnn = latent_cnn.permute(0, 2, 3, 1).contiguous()  # [B, H, W, C]
+        # MLP forward
         outputs = mlp(latent_cnn)
-        outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
-  
-
-
-        # render batch 
-        rendered_batch = render_image(
-            patch_outputs=outputs,
-            image_size=(crop_size, crop_size),
-            scale=scale,
-            patch_size=patch_size
-        ).to(device)
-        #rendered_batch = torch.clamp(rendered_batch, 0.0, 1.0)
+        outputs = outputs.permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
+        # outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
 
         if iteration == 0:
             save_image(
                 lr_batch,
-                f"./output/ver4/lr_epoch{epoch+1}.png"
+                f"./output/kent/lr_epoch{epoch+1}.png"
             )
             save_image(
-                rendered_batch,
-                f"./output/ver4/output_epoch{epoch+1}.png"
+                outputs,
+                f"./output/kent/output_epoch{epoch+1}.png"
             )
         iteration += 1
 
+        # render batch 
+        # rendered_batch = render_image(
+        #     patch_outputs=outputs,
+        #     image_size=(crop_size, crop_size),
+        #     scale=scale,
+        #     patch_size=patch_size
+        # ).to(device)
+        #rendered_batch = torch.clamp(rendered_batch, 0.0, 1.0)
+
         # loss + backward
         optimizer.zero_grad()
-        loss = loss_fn(rendered_batch, lr_batch)
+        loss = loss_fn(outputs, lr_batch)
         loss.backward()
         optimizer.step()
     
-    # inference on DrealSR01 every 5 epochs
+    # inference on DrealSR01 every 10 epochs (changed from every epoch to reduce overhead)
     if (epoch + 1) % 1 == 0:
         with torch.no_grad():
             lr_path = os.path.join(image_dir, "DrealSR01_LR.png")
@@ -211,7 +209,7 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
             # for top, left for cropping 64 * 64
             _, lr_H, lr_W = lr_tensor_full.shape
 
-            render_full = torch.zeros((1, 3, lr_H, lr_W)).to(device)
+            output_full = torch.zeros((1, 3, lr_H, lr_W)).to(device)
             for top in range(0, lr_H, crop_size):
                 for left in range(0, lr_W, crop_size):
                     if top + crop_size > lr_H or left + crop_size > lr_W:
@@ -222,47 +220,49 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
 
                     # encoder forward
                     #print("lr_tensor", lr_tensor.shape)
-                    #feat = hat.model.conv_first(lr_tensor)
-                    #lr_crop_latents = hat.model.forward_features(feat)
-                    lr_crop_latents = hat(lr_tensor)
+                    lr_crop_latents = hat(lr_tensor) 
 
                     # PCA
                     #latent_pca = pca(lr_crop_latents) 
 
                     # CNN
                     latent_cnn = cnn(lr_crop_latents) 
+                    latent_cnn = latent_cnn.permute(0, 2, 3, 1).contiguous()  # [B, H, W, C]
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
-                    outputs = outputs.view(1, 1, colors, n, fft_parameters)  # [batch, patch_num, colors, n, fft_parameters]
+                    outputs = outputs.permute(0, 3, 1, 2).contiguous()  # [B, C, H, W]
+                    output_full[ :, :, top : top+crop_size, left : left+crop_size] = outputs
             
-                    # render reconstructed image
-                    rendered_image = render_image(
-                        patch_outputs=outputs,
-                        image_size=(crop_size, crop_size),
-                        scale=scale,
-                        patch_size=patch_size
-                    ).to(device)
-                    rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
-                    render_full[ :, :, top : top+crop_size, left : left+crop_size] = rendered_image
-
+            # render reconstructed image
+            # rendered_image = render_image(
+            #     patch_outputs=outputs_full_image,
+            #     image_size=(lr_H, lr_W),
+            #     scale=scale,
+            #     patch_size=patch_size
+            # ).to(device)
+            # rendered_image = torch.clamp(rendered_image, 0.0, 1.0)
+            
             # PSNR
-            print("render_full", render_full.shape)
-            epoch_psnr = psnr(render_full, lr_tensor_full)
+            epoch_psnr = psnr(output_full, lr_tensor_full)
             
-            # 存檔查看
-            image_np = (render_full[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
-            img = Image.fromarray(image_np)
-            img.save(f"./output/ver4/rendered_epoch{epoch+1}_01.png")
+            # 存檔查看 (only when saving checkpoint)
+            if (epoch + 1) % 1 == 0:
+                image_np = (output_full[0].permute(1,2,0).detach().cpu().numpy() * 255).astype('uint8')
+                img = Image.fromarray(image_np)
+                img.save(f"./output/kent/rendered_epoch{epoch+1}_01.png")
+    else:
+        epoch_psnr = 0.0  # Skip PSNR calculation when not validating
 
-    if (epoch + 1) % 5 == 0:
+    if (epoch + 1) % 1 == 0:
         save_checkpoint(
             epoch=epoch + 1,
             mlp=mlp,
             cnn=cnn,
             optimizer=optimizer,
-            path=f'./checkpoints/ver3_epoch_{epoch+1}_batch_8.pth'
+            path=f'./checkpoints/kent/epoch_{epoch+1}_batch_8.pth'
         )
+        print(f"[Checkpoint saved at epoch {epoch+1}]")
 
     elapsed = time.time() - start_time
     h = int(elapsed // 3600)
