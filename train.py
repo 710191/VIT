@@ -49,7 +49,7 @@ cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).t
 
 # MLP list
 input_dim =  out_channels * ((patch_size * 2 // (2 ** num_downsample)) ** 2)
-mlp = SIREN_MLP(input_dim, colors * n * fft_parameters).to(device)
+mlp = SIREN_MLP(input_dim, colors, n, fft_parameters).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(
@@ -92,7 +92,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut64"
+image_dir = "../../dataset/DrealSR_cut"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(1, 2)]
 
 
