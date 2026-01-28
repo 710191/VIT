@@ -106,7 +106,7 @@ dataset = LRPatchDatasetPreloaded(image_dir=image_dir,
 
 dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=12, pin_memory=True)
 
-for epoch in tqdm(range(start_epoch, num_epochs)):
+for epoch in tqdm(range(start_epoch, num_epochs)): # XX%
     start_time = time.time()
 
     iteration = 0

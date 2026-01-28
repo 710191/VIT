@@ -32,6 +32,9 @@ def render_image(
     x_local = x - patch_col * patch_size
     y_local = y - patch_row * patch_size
 
+    x_local /= patch_size
+    y_local /= patch_size
+
     # 3. 擴展 batch
     patch_idx_flat = patch_idx.view(1, -1).expand(B, Hs*Ws)  # [B, Hs*Ws]
 
