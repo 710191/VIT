@@ -7,7 +7,7 @@ class SIREN_MLP(nn.Module):
     SIREN backbone + multi-head for fft_parameters
     Each head predicts one fft parameter independently
     """
-    def __init__(self, input_dim, colors, n, fft_parameters, hidden_dims=[512, 1024, 512]):
+    def __init__(self, input_dim, colors, n, fft_parameters, hidden_dims=[8192, 8192, 8192]):
         super().__init__()
         self.colors = colors
         self.n = n

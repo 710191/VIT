@@ -53,6 +53,6 @@ def render_image(
 
     # 4. 計算 V(x, y)
     value = alpha * torch.sin(omega_x * x_view + omega_y * y_view + phi)  # [B, Hs, Ws, C, n]
-    images = value.sum(dim=-1).permute(0,3,1,2)  # sum over n -> [B, C, Hs, Ws]
+    images = value.mean(dim=-1).permute(0,3,1,2) + 0.5  # sum over n -> [B, C, Hs, Ws]
 
     return images

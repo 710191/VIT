@@ -4,6 +4,7 @@ from encoder import Encoder
 from render_image import render_image
 from PCA import PCA
 from CNN import PatchEncoderCNN
+from MLP import MLP
 from SIREN_MLP import SIREN_MLP
 from PIL import Image
 from torch.utils.data import DataLoader
@@ -25,7 +26,7 @@ hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
 # 訓練參數
 colors = 3 
-n = 1000
+n = 512
 fft_parameters = 4 
 num_epochs = 1000
 num_iters = 200
@@ -49,7 +50,7 @@ cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).t
 
 # MLP list
 input_dim =  out_channels * ((patch_size * 2 // (2 ** num_downsample)) ** 2)
-mlp = SIREN_MLP(input_dim, colors, n, fft_parameters).to(device)
+mlp = MLP(input_dim, colors, n, fft_parameters).to(device)
 
 # optimizer
 optimizer = torch.optim.Adam(
@@ -92,7 +93,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut"
+image_dir = "../../dataset/DrealSR_cut64"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(1, 2)]
 
 
@@ -247,7 +248,6 @@ for epoch in tqdm(range(start_epoch, num_epochs)):
                     render_full[ :, :, top : top+crop_size, left : left+crop_size] = rendered_image
 
             # PSNR
-            print("render_full", render_full.shape)
             epoch_psnr = psnr(render_full, lr_tensor_full)
             
             # 存檔查看
