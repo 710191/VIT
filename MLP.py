@@ -25,7 +25,7 @@ class MLP(nn.Module):
         ])
         self.amplitude_IDS = {0}   # amplitude heads
         self.phase_IDS = {1}   # phase heads
-        self.omega_IDS = {2} # omega_x, omega_y heads
+        self.omega_IDS = {2, 3} # omega_x, omega_y heads
 
     def forward(self, x):
         # Shared backbone
@@ -50,6 +50,6 @@ class MLP(nn.Module):
             outputs.append(out)
 
         # Concatenate along the fft_parameter dimension
-        # Final shape: [batch, colors * n * fft_parameters]
+        # Final shape: [batch, fft_parameters * colors * n]
         out = torch.cat(outputs, dim=-1)
         return out

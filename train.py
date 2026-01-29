@@ -158,9 +158,9 @@ for epoch in tqdm(range(start_epoch, num_epochs)): # XX%
 
         # MLP forward + reshape
         outputs = mlp(latent_cnn)
-        outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
-  
-
+        # outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
+        outputs = outputs.view(outputs.shape[0], 1, fft_parameters, colors, n)
+        outputs = outputs.permute(0, 1, 3, 4, 2)  # [batch, patch_num, colors, n, fft_parameters]
 
         # render batch 
         rendered_batch = render_image(
@@ -235,8 +235,9 @@ for epoch in tqdm(range(start_epoch, num_epochs)): # XX%
 
                     # 丟進MLP後 reshape
                     outputs = mlp(latent_cnn) # [batch, patch_num, colors * n * fft_parameters]
-                    outputs = outputs.view(1, 1, colors, n, fft_parameters)  # [batch, patch_num, colors, n, fft_parameters]
-            
+                    outputs = outputs.view(outputs.shape[0], 1, fft_parameters, colors, n)
+                    outputs = outputs.permute(0, 1, 3, 4, 2)  # [batch, patch_num, colors, n, fft_parameters]
+
                     # render reconstructed image
                     rendered_image = render_image(
                         patch_outputs=outputs,

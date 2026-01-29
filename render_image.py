@@ -50,6 +50,13 @@ def render_image(
     phi     = gathered[..., 1]
     omega_x = gathered[..., 2]
     omega_y = gathered[..., 3]
+    
+    """
+    print("alpha max:", alpha.max().item(), "min:", alpha.min().item())
+    print("phi max:", phi.max().item(), "min:", phi.min().item())
+    print("omega_x max:", omega_x.max().item(), "min:", omega_x.min().item())
+    print("omega_y max:", omega_y.max().item(), "min:", omega_y.min().item())
+    """
 
     x_view = x_local.view(1, Hs, Ws, 1, 1)  # [1, Hs, Ws, 1, 1]
     y_view = y_local.view(1, Hs, Ws, 1, 1)
