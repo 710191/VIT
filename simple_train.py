@@ -18,7 +18,7 @@ to_tensor = transforms.ToTensor()
 
 # 訓練參數
 colors = 3 
-n = 20  # u_len = 2n, v_len = n
+n = 32  # u_len = 2n, v_len = n
 fft_parameters = 4 
 num_epochs = 10000
 num_iters = 100
@@ -120,8 +120,8 @@ for epoch in range(num_epochs):
             # render reconstructed image
             image_size = (64, 64)
             rendered_image = render_image_from_patches(
-                alphas = alphas_half + outputs[0, :, :, :], # alphas
-                phis = phis_half + outputs[1, :, :, :],   # phis
+                alphas = alphas_half, # + outputs[0, :, :, :], # alphas
+                phis = phis_half, # + outputs[1, :, :, :],   # phis
                 v_lists = v_lists,
                 u_lists = u_lists,
                 image_size=image_size,
@@ -148,8 +148,8 @@ for epoch in range(num_epochs):
     print("img loss:", loss_fn(rendered_image_tensor_batch, lr_tensor_batch).item())
     print("loss:", loss.item())
 
-    loss.backward()
-    optimizer.step()
+    #loss.backward()
+    #optimizer.step()
     
     # inference on DrealSR01 every 5 epochs
     if (epoch + 1) % 1 == 0:

@@ -49,6 +49,14 @@ def render_image_from_patches(
         phi    = phis[c].to(device)        # [v_len, u_len]
         v_list = v_lists[c].to(device)     # [v_len]
         u_list = u_lists[c].to(device)     # [u_len]
+        """
+        print("alpha max", torch.max(alpha), "min", torch.min(alpha))
+        print("phi max", torch.max(phi), "min", torch.min(phi))
+        print("u_list", u_list)
+        print("v_list", v_list)
+        """
+        print("alpha max", torch.max(alpha), "min", torch.min(alpha))
+        print("alpha mean", torch.mean(alpha), "std", torch.std(alpha))
 
         recon_channel = torch.zeros((Hs, Ws), dtype=torch.float32, device=device)
 
