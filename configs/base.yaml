@@ -1,0 +1,36 @@
+# Training Configuration
+training:
+  epochs: 1000
+  batch_size: 1
+  learning_rate: 0.0001
+  optimizer: adam
+  scheduler:
+    type: step  # step, cosine, or none
+    step_size: 200
+    gamma: 0.5
+  
+  # Loss type: 'fft' (L2 on FFT coefficients) or 'rgb' (L2 on reconstructed RGB)
+  loss_type: fft
+  
+  # Logging and checkpointing
+  log_interval: 10
+  save_interval: 100
+  checkpoint_dir: ./checkpoints
+  
+  # Device
+  device: cuda  # cuda or cpu
+
+# Data Configuration
+data:
+  # For OverfitDataset
+  image_path: ./datasets/overfit/image.png
+  size: 64  # Resize image to this size for overfitting
+  # For GeneralDataset (list of image paths or directory)
+  image_dir: ./datasets/train
+  image_paths: []  # Can specify list of specific paths
+
+# Model Configuration
+model:
+    checkpoint: ./ckpt/HAT/HAT-L_SRx2_ImageNet-pretrain.pth
+    hidden_dim: 256
+    output_channels: 6
