@@ -40,7 +40,7 @@ class MLP(nn.Module):
 
             # ===== head-wise activation =====
             if i in self.amplitude_IDS:
-                out = torch.sigmoid(out)                # (0, 1)
+                out = torch.sigmoid(out) * 2            # (0, 2)
             elif i in self.phase_IDS:
                 out = torch.tanh(out) * math.pi         # (−π, π)
             elif i in self.omega_IDS:

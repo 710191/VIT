@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+import math
 from SIREN import SineLayer
 
 class SIREN_MLP(nn.Module):
@@ -22,6 +24,9 @@ class SIREN_MLP(nn.Module):
         self.heads = nn.ModuleList([
             nn.Linear(hidden_dims[2], colors * n) for _ in range(fft_parameters)
         ])
+        self.amplitude_IDS = {0}   # amplitude heads
+        self.phase_IDS = {1}   # phase heads
+        self.omega_IDS = {2, 3} # omega_x, omega_y heads
 
     def forward(self, x):
         # Shared backbone
@@ -31,11 +36,21 @@ class SIREN_MLP(nn.Module):
 
         # Forward through each head independently
         outputs = []
-        for head in self.heads:
-            out = head(x)  # [batch, colors * n]
+        for i, head in enumerate(self.heads):
+            out = head(x)  # [B, colors * n]
+
+            # ===== head-wise activation =====
+            if i in self.amplitude_IDS:
+                out = torch.sigmoid(out)                # (0, 1)
+            elif i in self.phase_IDS:
+                out = torch.tanh(out) * math.pi         # (−π, π)
+            elif i in self.omega_IDS:
+                out = F.softplus(out)                   # (0, inf)
+            # else: 不限制（coef / latent / residual）
+
             outputs.append(out)
 
         # Concatenate along the fft_parameter dimension
-        # Final shape: [batch, colors * n * fft_parameters]
+        # Final shape: [batch, fft_parameters * colors * n]
         out = torch.cat(outputs, dim=-1)
         return out

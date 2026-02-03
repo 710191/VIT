@@ -49,8 +49,15 @@ num_downsample = 4
 cnn = PatchEncoderCNN(in_channels=out_channels, num_downsample=num_downsample).to(device)
 
 # MLP list
+def init_weights(m):
+    if isinstance(m, nn.Linear):
+        # 小數值初始化，例如均勻分布 -0.01~0.01
+        nn.init.uniform_(m.weight, a=-0.01, b=0.01)
+        nn.init.zeros_(m.bias)
+
 input_dim =  out_channels * ((patch_size * 2 // (2 ** num_downsample)) ** 2)
 mlp = MLP(input_dim, colors, n, fft_parameters).to(device)
+mlp.apply(init_weights)
 
 # optimizer
 optimizer = torch.optim.Adam(
@@ -93,7 +100,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut64"
+image_dir = "../../dataset/DrealSR_cut"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(1, 2)]
 
 
@@ -161,6 +168,18 @@ for epoch in tqdm(range(start_epoch, num_epochs)): # XX%
         # outputs = outputs.view(outputs.shape[0], 1, colors, n, fft_parameters)
         outputs = outputs.view(outputs.shape[0], 1, fft_parameters, colors, n)
         outputs = outputs.permute(0, 1, 3, 4, 2)  # [batch, patch_num, colors, n, fft_parameters]
+
+        if epoch == 26:
+            print("alpah max:", outputs[:,:,:,:,0].max().item(), "min:", outputs[:,:,:,:,0].min().item())
+            print("phi max:", outputs[:,:,:,:,1].max().item(), "min:", outputs[:,:,:,:,1].min().item())
+            print("omega_x max:", outputs[:,:,:,:,2].max().item(), "min:", outputs[:,:,:,:,2].min().item())
+            print("omega_y max:", outputs[:,:,:,:,3].max().item(), "min:", outputs[:,:,:,:,3].min().item())
+            print("")
+            print("alpah mean:", outputs[:,:,:,:,0].mean().item(), "std:", outputs[:,:,:,:,0].std().item())
+            print("phi mean:", outputs[:,:,:,:,1].mean().item(), "std:", outputs[:,:,:,:,1].std().item())
+            print("omega_x mean:", outputs[:,:,:,:,2].mean().item(), "std:", outputs[:,:,:,:,2].std().item())
+            print("omega_y mean:", outputs[:,:,:,:,3].mean().item(), "std:", outputs[:,:,:,:,3].std().item())
+
 
         # render batch 
         rendered_batch = render_image(
