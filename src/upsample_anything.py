@@ -245,6 +245,7 @@ class LearnablePixelwiseAnisoJBU_NoParent(nn.Module):
         self.sy_raw = nn.Parameter(torch.full((1, 1, Hl, Wl), float(np.log(init_sigma)),   dtype=torch.float32))
         self.th_raw = nn.Parameter(torch.zeros( (1, 1, Hl, Wl),                             dtype=torch.float32))
         self.sr_raw = nn.Parameter(torch.full((1, 1, Hl, Wl), float(np.log(init_sigma_r)), dtype=torch.float32))
+        print("shape", self.sx_raw.shape)
 
     def forward(self, feat_lr: torch.Tensor, guide_hr: torch.Tensor):
         """

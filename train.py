@@ -100,7 +100,7 @@ def psnr(pred, target):
     return 20 * torch.log10(1.0 / torch.sqrt(mse))
 
 # training: 02~83
-image_dir = "../../dataset/DrealSR_cut"
+image_dir = "/work/a28133781/datasets/DrealSR_cut"
 image_list = [f"DrealSR{str(i).zfill(2)}_LR.png" for i in range(1, 2)]
 
 

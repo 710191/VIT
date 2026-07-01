@@ -5,13 +5,13 @@ from torch.utils.data import DataLoader
 from PIL import Image
 from lr_patch_dataset import LRPatchDataset, LRPatchDatasetPreloaded
 from tqdm import tqdm
-from src.upsample_anything import UPA
+from src.upsample_anything_SIN import UPA_SIN
 from torchvision.utils import save_image
 import torchvision.transforms as T
 import os
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
-model = UPA
+model = UPA_SIN
 
 # PSNR 計算函數
 def psnr(pred, target):
@@ -48,11 +48,11 @@ for image_name in tqdm(image_list):
     
     lr_predict = model(lr_img, lr_tensor)
     lr_epoch_psnr = psnr(lr_predict, lr_tensor)
-    hr_predict = F.interpolate(lr_predict, scale_factor=4, mode="bicubic", align_corners=False)
+    hr_predict = F.interpolate(lr_predict, scale_factor=2, mode="bicubic", align_corners=False)
     hr_epoch_psnr = psnr(hr_predict, hr_tensor)
     print(f"LR PSNR: {lr_epoch_psnr:.4f} dB, HR PSNR: {hr_epoch_psnr:.4f} dB") #44 33
 
-    save_image(lr_tensor, f"./output/lr_{image_name}.png")
-    save_image(hr_tensor, f"./output/hr_{image_name}.png")
-    save_image(lr_predict, f"./output/UPA_{image_name}.png")
-    save_image(hr_predict, f"./output/UPA_hr_{image_name}.png")
+    save_image(lr_tensor, f"./output/SIN/lr_{image_name}.png")
+    save_image(hr_tensor, f"./output/SIN/hr_{image_name}.png")
+    save_image(lr_predict, f"./output/SIN/UPA_{image_name}.png")
+    save_image(hr_predict, f"./output/SIN/UPA_hr_{image_name}.png")

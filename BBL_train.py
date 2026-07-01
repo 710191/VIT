@@ -15,11 +15,14 @@ import csv
 import time
 
 from tqdm import tqdm
+from BBL import BBL
 
 from torchvision.utils import save_image
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
+
+model = BBL
 
 hat = Encoder('HAT', 'HAT-L_SRx2_ImageNet-pretrain.pth').to(device)
 
